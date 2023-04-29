@@ -1,0 +1,86 @@
+#Домашнее задание 1
+
+-- 1. В https://console.cloud.yandex.ru создал ВМ postgres19851130
+-- 2. Создал инстанс
+-- 3. Создал и добавил ssh ключ
+-- 4. Обновил на ВМ Ubuntu и услановил PostgreSQL 15
+-- 5. Запустил две сессии psql из под пользователя postgres
+-- 6. Выключил auto commit в обеих сессиях
+      \set AUTOCOMMIT OFF
+      \echo :AUTOCOMMIT
+      off
+-- 7. Сделал в первой сессии новую таблицу и наполнил ее данными
+      create table persons(id serial, first_name text, second_name text);
+      insert into persons(first_name, second_name) values('ivan', 'ivanov');
+      insert into persons(first_name, second_name) values('petr', 'petrov');
+      commit;   
+
+      select * from persons;
+         id | first_name | second_name
+      ----+------------+-------------
+         1 | ivan       | ivanov
+         2 | petr       | petrov
+      (2 rows)
+-- 8. Посмотрел текущий уровень изоляции
+      show transaction isolation level = read committed
+-- 9. Начал новую транзакцию в обоих сессиях с дефолтным (не меняя) уровнем изоляции 
+      begin;
+-- 10. В первой сессии добавил новую запись
+      insert into persons(first_name, second_name) values('sergey', 'sergeev');
+-- 11. Сделал select * from persons во второй сессии
+      select * from persons;
+        id | first_name | second_name
+      ----+------------+-------------
+        1 | ivan       | ivanov
+        2 | petr       | petrov
+  (2 rows)
+-- Новой записи во второй сессии не видим, т.к. транзакция не зафиксирована в первой сессии
+-- 12. Завершил в первой сессии транзакцию (commit;)
+-- 13. Сделал select * from persons во второй сессии
+      select * from persons;
+        id | first_name | second_name
+      ----+------------+-------------
+        1 | ivan       | ivanov
+        2 | petr       | petrov
+        3 | sergey     | sergeev
+      (3 rows)
+-- Т.к. изменения в первой сессии мы зафиксировали и уровень изоляции транзакций read commited, то теперь я вижу третью запись в таблице persons
+-- 14. Завершил транзакцию во второй сессии (commit;)
+-- 15. Начал новые, но уже repeatable read транзакции
+       begin;
+      set transaction isolation level repeatable read;
+-- 16. В первой сессии добавил новую запись
+      insert into persons(first_name, second_name) values('sveta', 'svetova');
+-- 17. Сделал select * from persons во второй сессии
+      select * from persons;
+        id | first_name | second_name
+      ----+------------+-------------
+        1 | ivan       | ivanov
+        2 | petr       | petrov
+        3 | sergey     | sergeev
+      (3 rows)
+-- Новую запись во второй сессии не вижу. Изменения незафиксированы
+-- 18. Завершил первую транзакцию
+      commit;
+-- 19. Сделал select * from persons во второй сессии
+      select * from persons;
+        id | first_name | second_name
+      ----+------------+-------------
+        1 | ivan       | ivanov
+        2 | petr       | petrov
+        3 | sergey     | sergeev
+      (3 rows)
+      
+-- 20. Завершил вторую транзакцию
+-- 21. Сделал select * from persons во второй сессии
+      select * from persons;
+        id | first_name | second_name
+      ----+------------+-------------
+        1 | ivan       | ivanov
+        2 | petr       | petrov
+        3 | sergey     | sergeev
+        4 | sveta      | svetova
+-- Запись появилась. На лекции данную ситуацию назвали "Анамалия неповторяющегося чтения"
+-- Данная ситуация возникла из-за уровня изоляции тнанзакций repeateble read. 
+-- При этом уровне читающая транзакция «не видит» изменения данных, которые были ею ранее прочитаны. 
+-- Поэтому я увидел изменения в таблице во-второй сессии только после того, как зафиксировал в ней транзакцию
